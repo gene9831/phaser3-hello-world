@@ -20,8 +20,10 @@ export default class HelloWorldScene extends Phaser.Scene {
   private username?: Phaser.GameObjects.Text;
   private gameStatus: GameStatus = GameStatus.READY;
   private gameover?: Phaser.GameObjects.DOMElement;
+  private gravityY: number = 0;
 
   preload() {
+    this.gravityY = this.physics.config.gravity?.y || 0;
     this.load.image("sky", "assets/sky.png");
     this.load.image("ground", "assets/platform.png");
     this.load.image("star", "assets/star.png");
@@ -47,9 +49,9 @@ export default class HelloWorldScene extends Phaser.Scene {
 
     // add player
     this.player = this.physics.add.sprite(100, 450, "dude", 4);
-    this.player.setBounce(0.2);
+    // this.player.setBounce(0.2);
     this.player.setCollideWorldBounds(true);
-    this.player.setMaxVelocity(160, 400);
+    this.player.setMaxVelocity(160, 600);
 
     // animation
     this.anims.create({
@@ -104,6 +106,7 @@ export default class HelloWorldScene extends Phaser.Scene {
     this.physics.add.collider(this.bombs, this.platforms);
     this.physics.add.overlap(this.player, this.stars, this.collectStar, undefined, this);
     this.physics.add.collider(this.player, this.bombs, this.hitBomb, undefined, this);
+    this.physics.add.collider(this.bombs, this.bombs);
 
     // text
     this.scoreText = this.add.text(16, 16, "Score: 0", { fontSize: "24px", color: "#000" });
@@ -139,17 +142,6 @@ export default class HelloWorldScene extends Phaser.Scene {
     this.keyA = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A);
     this.keyD = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D);
     this.keySpace = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
-  }
-
-  private hasKeyDown() {
-    return (
-      this.cursors?.left.isDown ||
-      this.cursors?.right.isDown ||
-      this.cursors?.up.isDown ||
-      this.keyA?.isDown ||
-      this.keyD?.isDown ||
-      this.keySpace?.isDown
-    );
   }
 
   private collectStar(player: any, star: any) {
@@ -215,43 +207,68 @@ export default class HelloWorldScene extends Phaser.Scene {
     this.gameStatus = GameStatus.START;
   }
 
-  private axGround: number = 300;
-  private axAir: number = 200;
+  private myForce: number = 500;
+  private naturalForceOnAir: number = 200;
+  private naturalForceOnGround: number = 300;
 
-  private setAccelerationX(a: number) {
+  private setAccelerationX(force: number, naturalForce: number) {
+    if (force < naturalForce) return;
+    const f = force - naturalForce;
     if (this.cursors?.left?.isDown || this.keyA?.isDown) {
-      this.player?.setAccelerationX(-a);
+      this.player?.setAccelerationX(-f);
       this.player?.anims.play("left", true);
     } else if (this.cursors?.right?.isDown || this.keyD?.isDown) {
-      this.player?.setAccelerationX(a);
+      this.player?.setAccelerationX(f);
       this.player?.anims.play("right", true);
     } else {
+      // no keys down
       const vx = this.player?.body.velocity.x;
       let positive = 0;
-      if (vx) {
+      if (vx !== undefined) {
         if (vx >= 5) {
           positive = -1;
+          this.player?.anims.play("rightStill");
         } else if (vx <= -5) {
           positive = 1;
+          this.player?.anims.play("leftStill");
         } else {
           this.player?.setVelocityX(0);
+          this.player?.anims.play("turn");
         }
       }
-      this.player?.setAccelerationX(positive * a);
-      this.player?.anims.play("turn");
+      this.player?.setAccelerationX(positive * naturalForce);
     }
   }
+
+  private spaceKeyPress = false;
+  private spaceDuration = 0;
 
   update() {
     if (this.gameStatus !== GameStatus.START) return;
 
     if (this.player?.body.touching.down) {
-      this.setAccelerationX(this.axGround);
-      if (this.cursors?.up?.isDown || this.keySpace?.isDown) {
-        this.player?.setVelocityY(-400);
-      }
+      this.setAccelerationX(this.myForce, this.naturalForceOnGround);
     } else {
-      this.setAccelerationX(this.axAir);
+      this.setAccelerationX(this.myForce, this.naturalForceOnAir);
+    }
+
+    if (this.cursors?.up?.isDown || this.keySpace?.isDown) {
+      if (this.player?.body.touching.down && !this.spaceKeyPress) {
+        this.player.setVelocityY(-300);
+        this.player?.setAccelerationY(-this.gravityY - 400);
+      }
+      this.spaceKeyPress = true;
+      let duration = this.keySpace?.getDuration();
+      if (duration) {
+        this.spaceDuration = duration;
+        if (duration >= 300) {
+          this.player?.setAccelerationY(0);
+        }
+      }
+    }
+    if (this.spaceKeyPress && this.keySpace?.isUp) {
+      this.player?.setAccelerationY(0);
+      this.spaceKeyPress = false;
     }
   }
 }
